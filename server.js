@@ -14,6 +14,16 @@ const SHIELD_COOLDOWN_MS = 1000;
 const PARRY_WINDOW_MS = 400;
 const SHIELD_LOCKOUT_MS = 4000;
 const KNOCKBACK_DISTANCE = 80;
+const PLAYER_SPEED = 340; // units per second
+const ATTACK_RANGE = 110;
+const ATTACK_ARC_RAD = Math.PI / 2; // 90 degree swing in facing direction
+const SHIELD_ARC_RAD = (2 * Math.PI) / 3; // 120 degree front-facing block
+const GAME_TICK_MS = 30;
+const ARENA = { width: 900, height: 520, padding: 30 };
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
 
 // Serve static files
 app.use(express.static('public'));
@@ -32,10 +42,30 @@ class Game {
     this.id = crypto.randomUUID();
     this.players = [player1, player2];
     this.state = {
-      player1: { x: 100, y: 250, health: 100, score: 0, attacking: false, shield: this.createShieldState() },
-      player2: { x: 700, y: 250, health: 100, score: 0, attacking: false, shield: this.createShieldState() }
+      player1: {
+        x: ARENA.padding + 70,
+        y: ARENA.height / 2,
+        facing: { x: 1, y: 0 },
+        health: 100,
+        score: 0,
+        attacking: false,
+        shield: this.createShieldState()
+      },
+      player2: {
+        x: ARENA.width - ARENA.padding - 70,
+        y: ARENA.height / 2,
+        facing: { x: -1, y: 0 },
+        health: 100,
+        score: 0,
+        attacking: false,
+        shield: this.createShieldState()
+      }
     };
     this.lastUpdate = Date.now();
+    this.inputs = [
+      { dx: 0, dy: 0 },
+      { dx: 0, dy: 0 }
+    ];
     
     player1.gameId = this.id;
     player2.gameId = this.id;
@@ -45,6 +75,8 @@ class Game {
     // Notify players game started
     this.sendToPlayers({ type: 'gameStart', playerIndex: 0 }, 0);
     this.sendToPlayers({ type: 'gameStart', playerIndex: 1 }, 1);
+
+    this.loop = setInterval(() => this.step(), GAME_TICK_MS);
   }
 
   createShieldState() {
@@ -91,17 +123,51 @@ class Game {
   updatePlayer(playerIndex, data) {
     const playerKey = `player${playerIndex + 1}`;
     if (this.state[playerKey]) {
-      Object.assign(this.state[playerKey], data);
-
-      this.refreshShieldStrength(this.state.player1.shield, Date.now());
-      this.refreshShieldStrength(this.state.player2.shield, Date.now());
-
-      // Broadcast game state to all players
-      this.sendToPlayers({
-        type: 'gameState',
-        state: this.state
-      });
+      this.inputs[playerIndex] = {
+        dx: Math.max(-1, Math.min(1, data.dx || 0)),
+        dy: Math.max(-1, Math.min(1, data.dy || 0))
+      };
     }
+  }
+
+  step() {
+    const now = Date.now();
+    const dt = (now - this.lastUpdate) / 1000;
+    this.lastUpdate = now;
+
+    this.refreshShieldStrength(this.state.player1.shield, now);
+    this.refreshShieldStrength(this.state.player2.shield, now);
+
+    [0, 1].forEach((index) => {
+      const input = this.inputs[index];
+      const playerKey = `player${index + 1}`;
+      const player = this.state[playerKey];
+      if (!player) return;
+
+      const magnitude = Math.hypot(input.dx, input.dy);
+
+      if (magnitude > 0.01) {
+        const nx = input.dx / magnitude;
+        const ny = input.dy / magnitude;
+        player.facing = { x: nx, y: ny };
+
+        player.x = clamp(
+          player.x + nx * PLAYER_SPEED * dt,
+          ARENA.padding,
+          ARENA.width - ARENA.padding
+        );
+        player.y = clamp(
+          player.y + ny * PLAYER_SPEED * dt,
+          ARENA.padding,
+          ARENA.height - ARENA.padding
+        );
+      }
+    });
+
+    this.sendToPlayers({
+      type: 'gameState',
+      state: this.state
+    });
   }
   
   handleAttack(attackerIndex) {
@@ -115,29 +181,35 @@ class Game {
     this.refreshShieldStrength(attacker.shield, now);
     this.refreshShieldStrength(defender.shield, now);
 
-    // Check if attack hits (simple distance check)
-    const distance = Math.sqrt(
-      Math.pow(attacker.x - defender.x, 2) +
-      Math.pow(attacker.y - defender.y, 2)
-    );
+    const dx = defender.x - attacker.x;
+    const dy = defender.y - attacker.y;
+    const distance = Math.hypot(dx, dy);
+    const facing = attacker.facing || { x: 1, y: 0 };
+    const toTarget = distance > 0 ? { x: dx / distance, y: dy / distance } : { x: 1, y: 0 };
+    const angleToTarget = Math.acos(clamp(facing.x * toTarget.x + facing.y * toTarget.y, -1, 1));
 
-    if (distance < 100) {
-      const defenderShield = defender.shield;
-      if (
-        defenderShield.up &&
-        now >= defenderShield.disabledUntil
-      ) {
-        const parryTiming = now - defenderShield.lastRaised;
-        if (parryTiming >= 0 && parryTiming <= PARRY_WINDOW_MS) {
-          // Perfect parry: knock back and lock the opponent shield
-          const dx = attacker.x - defender.x;
-          const dy = attacker.y - defender.y;
-          const length = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-          attacker.x += (dx / length) * KNOCKBACK_DISTANCE;
-          attacker.y += (dy / length) * KNOCKBACK_DISTANCE;
+    if (distance <= ATTACK_RANGE && angleToTarget <= ATTACK_ARC_RAD / 2) {
+      if (defender.shield?.up && now >= defender.shield.disabledUntil) {
+        const defenderShield = defender.shield;
+        const attackAngleAgainstShield = (() => {
+          const dxToAttacker = attacker.x - defender.x;
+          const dyToAttacker = attacker.y - defender.y;
+          const distToAttacker = Math.hypot(dxToAttacker, dyToAttacker) || 1;
+          const shieldFacing = defender.facing || { x: -1, y: 0 };
+          const towardsAttacker = { x: dxToAttacker / distToAttacker, y: dyToAttacker / distToAttacker };
+          return Math.acos(clamp(shieldFacing.x * towardsAttacker.x + shieldFacing.y * towardsAttacker.y, -1, 1));
+        })();
+
+        if (attackAngleAgainstShield > SHIELD_ARC_RAD / 2) {
+          defender.health = Math.max(0, defender.health - 10);
+        } else if (now - defenderShield.lastRaised <= PARRY_WINDOW_MS) {
+          const dxKnock = defender.x - attacker.x;
+          const dyKnock = defender.y - attacker.y;
+          const length = Math.hypot(dxKnock, dyKnock) || 1;
+          attacker.x += (dxKnock / length) * KNOCKBACK_DISTANCE;
+          attacker.y += (dyKnock / length) * KNOCKBACK_DISTANCE;
           attacker.shield.disabledUntil = now + SHIELD_LOCKOUT_MS;
-        } else {
-          // Normal block: absorb the hit but lose durability
+        } else if (now >= defenderShield.disabledUntil) {
           defenderShield.strength = Math.max(0, defenderShield.strength - 1);
 
           if (defenderShield.strength === 0) {
@@ -155,8 +227,12 @@ class Game {
           // Reset round
           this.state.player1.health = 100;
           this.state.player2.health = 100;
-          this.state.player1.x = 100;
-          this.state.player2.x = 700;
+          this.state.player1.x = ARENA.padding + 70;
+          this.state.player2.x = ARENA.width - ARENA.padding - 70;
+          this.state.player1.y = ARENA.height / 2;
+          this.state.player2.y = ARENA.height / 2;
+          this.state.player1.facing = { x: 1, y: 0 };
+          this.state.player2.facing = { x: -1, y: 0 };
           this.state.player1.shield = this.createShieldState();
           this.state.player2.shield = this.createShieldState();
 
@@ -210,6 +286,10 @@ class Game {
       state: this.state
     });
   }
+
+  destroy() {
+    clearInterval(this.loop);
+  }
 }
 
 // WebSocket connection handler
@@ -241,8 +321,8 @@ wss.on('connection', (ws) => {
             const game = games.get(player.gameId);
             if (game) {
               game.updatePlayer(player.playerIndex, {
-                x: data.x,
-                y: data.y
+                dx: data.dx,
+                dy: data.dy
               });
             }
           }
@@ -285,6 +365,7 @@ wss.on('connection', (ws) => {
       const game = games.get(player.gameId);
       if (game) {
         game.sendToPlayers({ type: 'opponentDisconnected' });
+        game.destroy();
         games.delete(player.gameId);
       }
     }

@@ -3,10 +3,17 @@ let ws;
 let canvas, ctx;
 let playerIndex = -1;
 let gameState = null;
+let renderState = null;
 let joystickActive = false;
 let joystickPos = { x: 0, y: 0 };
 let particles = [];
 let wsHost = null;
+let lastMoveSent = 0;
+let lastMoveDir = { x: 0, y: 0 };
+
+const ATTACK_ARC_RAD = Math.PI / 2;
+const SHIELD_ARC_RAD = (2 * Math.PI) / 3;
+const cloneState = (state) => JSON.parse(JSON.stringify(state));
 
 // UI elements
 const menuScreen = document.getElementById('menu');
@@ -132,6 +139,9 @@ function handleServerMessage(data) {
       
     case 'gameState':
       gameState = data.state;
+      if (!renderState) {
+        renderState = cloneState(gameState);
+      }
       updateHUD();
       break;
       
@@ -192,26 +202,17 @@ function setupJoystick() {
     joystickPos.y = deltaY / maxDistance;
     
     joystickInner.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
-    
-    // Send movement to server
-    if (ws && ws.readyState === WebSocket.OPEN && gameState) {
-      const speed = 5;
-      const playerKey = `player${playerIndex + 1}`;
-      const player = gameState[playerKey];
-      
-      ws.send(JSON.stringify({
-        type: 'move',
-        x: Math.max(20, Math.min(canvas.width - 20, player.x + joystickPos.x * speed)),
-        y: Math.max(20, Math.min(canvas.height - 20, player.y + joystickPos.y * speed))
-      }));
-    }
+
+    sendMovement(joystickPos.x, joystickPos.y);
   }
-  
+
   function handleEnd(e) {
     e.preventDefault();
     joystickActive = false;
     joystickPos = { x: 0, y: 0 };
     joystickInner.style.transform = 'translate(-50%, -50%)';
+
+    sendMovement(0, 0);
   }
   
   joystick.addEventListener('touchstart', handleStart);
@@ -220,6 +221,26 @@ function setupJoystick() {
   joystick.addEventListener('mousedown', handleStart);
   document.addEventListener('mousemove', handleMove);
   document.addEventListener('mouseup', handleEnd);
+}
+
+function sendMovement(dx, dy) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+  const now = performance.now();
+  const change = Math.hypot(dx - lastMoveDir.x, dy - lastMoveDir.y);
+
+  if (now - lastMoveSent < 25 && change < 0.05) return;
+
+  lastMoveSent = now;
+  lastMoveDir = { x: dx, y: dy };
+
+  const magnitude = Math.hypot(dx, dy);
+  if (magnitude > 1) {
+    dx /= magnitude;
+    dy /= magnitude;
+  }
+
+  ws.send(JSON.stringify({ type: 'move', dx, dy }));
 }
 
 function attack() {
@@ -303,23 +324,63 @@ function renderShieldButton() {
   }
 }
 
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function smoothRenderState() {
+  if (!gameState) return;
+  if (!renderState) {
+    renderState = cloneState(gameState);
+    return;
+  }
+
+  ['player1', 'player2'].forEach((key) => {
+    const target = gameState[key];
+    if (!target) return;
+
+    if (!renderState[key]) {
+      renderState[key] = cloneState(target);
+    }
+
+    const current = renderState[key];
+    current.x = lerp(current.x, target.x, 0.35);
+    current.y = lerp(current.y, target.y, 0.35);
+
+    if (target.facing) {
+      const fx = lerp(current.facing?.x ?? 0, target.facing.x, 0.4);
+      const fy = lerp(current.facing?.y ?? 0, target.facing.y, 0.4);
+      const len = Math.hypot(fx, fy) || 1;
+      current.facing = { x: fx / len, y: fy / len };
+    }
+
+    current.health = target.health;
+    current.score = target.score;
+    current.attacking = target.attacking;
+    current.shield = target.shield;
+  });
+}
+
 function gameLoop(timestamp) {
   // Clear canvas
   ctx.fillStyle = 'rgba(15, 12, 41, 0.3)';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  
+
   // Draw grid effect
   drawGrid();
-  
+
   // Draw particles
   updateParticles();
-  
+
+  smoothRenderState();
+
   // Draw players
-  if (gameState) {
-    drawPlayer(gameState.player1, playerIndex === 0, '#00ffff');
-    drawPlayer(gameState.player2, playerIndex === 1, '#ff00ff');
+  const state = renderState || gameState;
+  if (state) {
+    drawPlayer(state.player1, playerIndex === 0, '#00ffff');
+    drawPlayer(state.player2, playerIndex === 1, '#ff00ff');
   }
-  
+
   requestAnimationFrame(gameLoop);
 }
 
@@ -346,7 +407,10 @@ function drawGrid() {
 
 function drawPlayer(player, isYou, color) {
   if (!player) return;
-  
+
+  const facing = player.facing || { x: isYou ? 1 : -1, y: 0 };
+  const facingAngle = Math.atan2(facing.y, facing.x);
+
   // Shadow
   ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
   ctx.beginPath();
@@ -377,7 +441,15 @@ function drawPlayer(player, isYou, color) {
   ctx.beginPath();
   ctx.arc(player.x, player.y, 25, 0, Math.PI * 2);
   ctx.stroke();
-  
+
+  // Facing indicator
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(player.x, player.y);
+  ctx.lineTo(player.x + Math.cos(facingAngle) * 35, player.y + Math.sin(facingAngle) * 35);
+  ctx.stroke();
+
   // Attack effect
   if (player.attacking) {
     ctx.strokeStyle = '#ff6600';
@@ -385,7 +457,7 @@ function drawPlayer(player, isYou, color) {
     ctx.shadowBlur = 30;
     ctx.shadowColor = '#ff6600';
     ctx.beginPath();
-    ctx.arc(player.x, player.y, 45, 0, Math.PI * 2);
+    ctx.arc(player.x, player.y, 55, facingAngle - ATTACK_ARC_RAD / 2, facingAngle + ATTACK_ARC_RAD / 2);
     ctx.stroke();
     ctx.shadowBlur = 0;
   }
@@ -396,7 +468,13 @@ function drawPlayer(player, isYou, color) {
     ctx.shadowBlur = 25;
     ctx.shadowColor = '#00ffff';
     ctx.beginPath();
-    ctx.arc(player.x, player.y, 55, 0, Math.PI * 2);
+    ctx.arc(
+      player.x,
+      player.y,
+      60,
+      facingAngle - SHIELD_ARC_RAD / 2,
+      facingAngle + SHIELD_ARC_RAD / 2
+    );
     ctx.stroke();
     ctx.shadowBlur = 0;
   }
