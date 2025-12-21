@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>1v1 PVP Arena</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="menu" class="screen">
+    <div class="title-container">
+      <h1 class="neon-title">⚔️ 1v1 PVP ARENA ⚔️</h1>
+      <p class="subtitle">Epic Mobile Combat</p>
+    </div>
+    <button id="playBtn" class="neon-button">FIND MATCH</button>
+    <div id="status" class="status"></div>
+  </div>
+
+  <div id="game" class="screen hidden">
+    <div class="hud">
+      <div class="player-info player1-info">
+        <div class="player-name">YOU</div>
+        <div class="health-bar">
+          <div id="health1" class="health-fill"></div>
+        </div>
+        <div class="score">Score: <span id="score1">0</span></div>
+      </div>
+      
+      <div class="timer" id="timer">--</div>
+      
+      <div class="player-info player2-info">
+        <div class="player-name">OPPONENT</div>
+        <div class="health-bar">
+          <div id="health2" class="health-fill"></div>
+        </div>
+        <div class="score">Score: <span id="score2">0</span></div>
+      </div>
+    </div>
+    
+    <canvas id="gameCanvas"></canvas>
+    
+    <div class="controls">
+      <div class="joystick-container">
+        <div id="joystick" class="joystick">
+          <div class="joystick-inner"></div>
+        </div>
+      </div>
+      <button id="attackBtn" class="attack-button">ATTACK</button>
+    </div>
+  </div>
+
+  <div id="roundEnd" class="screen hidden overlay">
+    <div class="modal">
+      <h2 id="roundResult"></h2>
+      <button id="continueBtn" class="neon-button">CONTINUE</button>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
