@@ -55,6 +55,7 @@ npm start
 
 - **Locally**: Open http://localhost:3000 in your browser
 - **Publicly** (with cloudflared): Access via https://irgri.uk or https://www.irgri.uk
+- **Static hosting**: The client will connect to the WebSocket server defined in `public/config.js` (defaults to `irgri.uk` when not on localhost). Update `window.SERVER_HOST` there or pass `?server=host:port` in the URL to point the UI at your running server.
 
 ## 🎯 How to Play
 
@@ -118,6 +119,7 @@ The game is fully optimized for mobile devices:
 ├── public/
 │   ├── index.html      # Main game HTML
 │   ├── style.css       # Neon-themed styles
+│   ├── config.js       # Client connection config (SERVER_HOST)
 │   └── game.js         # Game client logic
 ├── server.js           # WebSocket game server
 ├── package.json        # Node.js dependencies

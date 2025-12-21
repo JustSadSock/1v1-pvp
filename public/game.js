@@ -6,6 +6,7 @@ let gameState = null;
 let joystickActive = false;
 let joystickPos = { x: 0, y: 0 };
 let particles = [];
+let wsHost = null;
 
 // UI elements
 const menuScreen = document.getElementById('menu');
@@ -48,10 +49,12 @@ function resizeCanvas() {
 }
 
 function connectWebSocket() {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = window.location.host;
-  ws = new WebSocket(`${protocol}//${host}`);
-  
+  const { url, host } = buildWebSocketUrl();
+  wsHost = host;
+  statusDiv.textContent = `Connecting to ${host}...`;
+
+  ws = new WebSocket(url);
+
   ws.onopen = () => {
     console.log('Connected to server');
     ws.send(JSON.stringify({ type: 'joinQueue' }));
@@ -65,7 +68,7 @@ function connectWebSocket() {
   
   ws.onerror = (error) => {
     console.error('WebSocket error:', error);
-    statusDiv.textContent = 'Connection error. Please refresh.';
+    statusDiv.textContent = `Connection error to ${wsHost}. Please refresh.`;
   };
   
   ws.onclose = () => {
@@ -77,6 +80,25 @@ function connectWebSocket() {
       location.reload();
     }
   };
+}
+
+function buildWebSocketUrl() {
+  const queryHost = new URL(window.location.href).searchParams.get('server');
+  const configuredHost = (queryHost || window.SERVER_HOST || '').trim();
+
+  // Accept full websocket or http(s) URLs, or a bare host[:port].
+  const raw = configuredHost || window.location.host;
+  if (raw.startsWith('ws://') || raw.startsWith('wss://')) {
+    return { url: raw, host: raw.replace(/^wss?:\/\//, '') };
+  }
+
+  if (raw.startsWith('http://') || raw.startsWith('https://')) {
+    const wsProtocol = raw.startsWith('https://') ? 'wss://' : 'ws://';
+    return { url: `${wsProtocol}${raw.replace(/^https?:\/\//, '')}`, host: raw.replace(/^https?:\/\//, '') };
+  }
+
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return { url: `${protocol}//${raw}`, host: raw };
 }
 
 function handleServerMessage(data) {
