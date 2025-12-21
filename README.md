@@ -138,6 +138,15 @@ To modify the game:
 
 MIT License - Feel free to use and modify!
 
+## 🔒 Security Notes
+
+This is a demonstration game server intended for local development and small-scale deployments via cloudflared tunnel. For production use, consider:
+
+- Adding rate-limiting middleware (e.g., `express-rate-limit`)
+- Implementing proper authentication for multiplayer sessions
+- Adding input validation and sanitization
+- Using HTTPS for all connections
+
 ## 🎮 Enjoy the Game!
 
 Have fun battling in the arena! ⚔️✨
