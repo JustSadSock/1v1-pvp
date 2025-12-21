@@ -10,20 +10,28 @@ let particles = [];
 let wsHost = null;
 let lastMoveSent = 0;
 let lastMoveDir = { x: 0, y: 0 };
+let playMode = 'online';
 
 const ATTACK_ARC_RAD = Math.PI / 2;
 const SHIELD_ARC_RAD = (2 * Math.PI) / 3;
 const cloneState = (state) => JSON.parse(JSON.stringify(state));
+
+function enableMenuButtons() {
+  playBtn.disabled = false;
+  soloBtn.disabled = false;
+}
 
 // UI elements
 const menuScreen = document.getElementById('menu');
 const gameScreen = document.getElementById('game');
 const roundEndScreen = document.getElementById('roundEnd');
 const playBtn = document.getElementById('playBtn');
+const soloBtn = document.getElementById('soloBtn');
 const attackBtn = document.getElementById('attackBtn');
 const shieldBtn = document.getElementById('shieldBtn');
 const statusDiv = document.getElementById('status');
 const continueBtn = document.getElementById('continueBtn');
+const fullscreenBtn = document.getElementById('fullscreenBtn');
 
 // Initialize
 window.addEventListener('load', () => {
@@ -32,8 +40,9 @@ window.addEventListener('load', () => {
   
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
-  
-  playBtn.addEventListener('click', joinGame);
+
+  playBtn.addEventListener('click', () => joinGame('online'));
+  soloBtn.addEventListener('click', () => joinGame('solo'));
   attackBtn.addEventListener('touchstart', (e) => {
     e.preventDefault();
     attack();
@@ -54,34 +63,39 @@ window.addEventListener('load', () => {
   shieldBtn.addEventListener('mousedown', raiseShieldHandler);
   shieldBtn.addEventListener('mouseup', lowerShieldHandler);
   shieldBtn.addEventListener('mouseleave', lowerShieldHandler);
-  
+
   continueBtn.addEventListener('click', () => {
     roundEndScreen.classList.add('hidden');
   });
-  
+
   setupJoystick();
-  
+  fullscreenBtn.addEventListener('click', toggleFullscreen);
+  document.addEventListener('fullscreenchange', updateFullscreenIcon);
+
   // Start animation loop
   requestAnimationFrame(gameLoop);
 });
 
 function resizeCanvas() {
-  const container = canvas.parentElement;
+  const hudHeight = document.querySelector('.hud')?.offsetHeight || 0;
+  const controlsHeight = document.querySelector('.controls')?.offsetHeight || 0;
   canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight - 150 - 60; // HUD + controls
+  canvas.height = Math.max(200, window.innerHeight - hudHeight - controlsHeight - 10);
 }
 
 function connectWebSocket() {
   const { url, host } = buildWebSocketUrl();
   wsHost = host;
-  statusDiv.textContent = `Connecting to ${host}...`;
+  statusDiv.textContent = `Connecting to ${host} (${playMode})...`;
 
   ws = new WebSocket(url);
 
   ws.onopen = () => {
     console.log('Connected to server');
-    ws.send(JSON.stringify({ type: 'joinQueue' }));
-    statusDiv.textContent = 'Searching for opponent...';
+    const joinType = playMode === 'solo' ? 'singlePlay' : 'joinQueue';
+    ws.send(JSON.stringify({ type: joinType }));
+    statusDiv.textContent =
+      playMode === 'solo' ? 'Spawning practice bot...' : 'Searching for opponent...';
   };
   
   ws.onmessage = (event) => {
@@ -92,12 +106,14 @@ function connectWebSocket() {
   ws.onerror = (error) => {
     console.error('WebSocket error:', error);
     statusDiv.textContent = `Connection error to ${wsHost}. Please refresh.`;
+    enableMenuButtons();
   };
-  
+
   ws.onclose = () => {
     console.log('Disconnected from server');
     if (gameScreen.classList.contains('hidden')) {
       statusDiv.textContent = 'Disconnected. Please try again.';
+      enableMenuButtons();
     } else {
       alert('Connection lost!');
       location.reload();
@@ -162,15 +178,41 @@ function handleServerMessage(data) {
   }
 }
 
-function joinGame() {
+function joinGame(mode = 'online') {
+  playMode = mode;
   playBtn.disabled = true;
+  soloBtn.disabled = true;
   connectWebSocket();
+}
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    const element = document.documentElement;
+    const request =
+      element.requestFullscreen ||
+      element.webkitRequestFullscreen ||
+      element.mozRequestFullScreen ||
+      element.msRequestFullscreen;
+    if (request) request.call(element);
+  } else {
+    const exit =
+      document.exitFullscreen ||
+      document.webkitExitFullscreen ||
+      document.mozCancelFullScreen ||
+      document.msExitFullscreen;
+    if (exit) exit.call(document);
+  }
+}
+
+function updateFullscreenIcon() {
+  const active = Boolean(document.fullscreenElement);
+  fullscreenBtn.classList.toggle('active', active);
 }
 
 function setupJoystick() {
   const joystick = document.getElementById('joystick');
   const joystickInner = joystick.querySelector('.joystick-inner');
-  const maxDistance = 35;
+  const maxDistance = 45;
   
   function handleStart(e) {
     e.preventDefault();

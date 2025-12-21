@@ -66,6 +66,7 @@ class Game {
       { dx: 0, dy: 0 },
       { dx: 0, dy: 0 }
     ];
+    this.botBrains = [player1.isBot ? this.createBotBrain() : null, player2.isBot ? this.createBotBrain() : null];
     
     player1.gameId = this.id;
     player2.gameId = this.id;
@@ -77,6 +78,13 @@ class Game {
     this.sendToPlayers({ type: 'gameStart', playerIndex: 1 }, 1);
 
     this.loop = setInterval(() => this.step(), GAME_TICK_MS);
+  }
+
+  createBotBrain() {
+    return {
+      lastAttack: 0,
+      strafe: Math.random() > 0.5 ? 1 : -1
+    };
   }
 
   createShieldState() {
@@ -108,12 +116,12 @@ class Game {
   sendToPlayers(message, playerIndex = null) {
     if (playerIndex !== null) {
       const player = this.players[playerIndex];
-      if (player && player.ws.readyState === WebSocket.OPEN) {
+      if (player && player.ws && player.ws.readyState === WebSocket.OPEN) {
         player.ws.send(JSON.stringify(message));
       }
     } else {
       this.players.forEach((player, idx) => {
-        if (player && player.ws.readyState === WebSocket.OPEN) {
+        if (player && player.ws && player.ws.readyState === WebSocket.OPEN) {
           player.ws.send(JSON.stringify(message));
         }
       });
@@ -137,6 +145,8 @@ class Game {
 
     this.refreshShieldStrength(this.state.player1.shield, now);
     this.refreshShieldStrength(this.state.player2.shield, now);
+
+    this.updateBots(now);
 
     [0, 1].forEach((index) => {
       const input = this.inputs[index];
@@ -167,6 +177,54 @@ class Game {
     this.sendToPlayers({
       type: 'gameState',
       state: this.state
+    });
+  }
+
+  updateBots(now) {
+    this.botBrains.forEach((brain, index) => {
+      if (!brain) return;
+
+      const botKey = `player${index + 1}`;
+      const targetKey = `player${index === 0 ? 2 : 1}`;
+      const bot = this.state[botKey];
+      const target = this.state[targetKey];
+      if (!bot || !target) return;
+
+      const dx = target.x - bot.x;
+      const dy = target.y - bot.y;
+      const distance = Math.hypot(dx, dy) || 1;
+      const towardX = dx / distance;
+      const towardY = dy / distance;
+
+      let moveX = towardX;
+      let moveY = towardY;
+
+      if (distance < ATTACK_RANGE * 0.9) {
+        const perpX = -towardY;
+        const perpY = towardX;
+        moveX = towardX * 0.55 + perpX * 0.45 * brain.strafe;
+        moveY = towardY * 0.55 + perpY * 0.45 * brain.strafe;
+      }
+
+      this.inputs[index] = { dx: moveX, dy: moveY };
+      bot.facing = { x: towardX, y: towardY };
+
+      const shouldShield =
+        target.attacking &&
+        distance <= ATTACK_RANGE + 20 &&
+        now >= bot.shield.disabledUntil;
+
+      if (shouldShield) {
+        this.toggleShield(index, true);
+      } else {
+        this.toggleShield(index, false);
+      }
+
+      if (distance <= ATTACK_RANGE * 0.95 && now - brain.lastAttack > 700) {
+        this.handleAttack(index);
+        brain.lastAttack = now;
+        brain.strafe *= -1;
+      }
     });
   }
   
@@ -270,6 +328,7 @@ class Game {
     this.refreshShieldStrength(shield, now);
 
     if (up) {
+      if (shield.up) return;
       if (now < shield.cooldownUntil || now < shield.disabledUntil) return;
       shield.up = true;
       shield.lastRaised = now;
@@ -313,6 +372,14 @@ wss.on('connection', (ws) => {
             games.set(game.id, game);
           } else {
             ws.send(JSON.stringify({ type: 'waiting' }));
+          }
+          break;
+
+        case 'singlePlay':
+          if (!player.gameId) {
+            const bot = { ws: null, id: `bot-${crypto.randomUUID()}`, isBot: true };
+            const game = new Game(player, bot);
+            games.set(game.id, game);
           }
           break;
           

@@ -78,6 +78,17 @@ body {
   animation: buttonGlow 2s ease-in-out infinite;
 }
 
+.menu-buttons {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.neon-button.secondary {
+  background: linear-gradient(135deg, #26c6da, #7c4dff);
+}
+
 .neon-button:active {
   transform: scale(0.95);
   box-shadow: 
@@ -190,24 +201,25 @@ body {
 .controls {
   width: 100%;
   height: 150px;
-  background: rgba(0, 0, 0, 0.7);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.4));
   border-top: 2px solid #00ffff;
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 0 30px;
   gap: 20px;
+  position: relative;
 }
 
 .joystick-container {
-  width: 120px;
-  height: 120px;
+  width: 140px;
+  height: 140px;
   position: relative;
 }
 
 .joystick {
-  width: 120px;
-  height: 120px;
+  width: 140px;
+  height: 140px;
   border-radius: 50%;
   background: rgba(0, 255, 255, 0.2);
   border: 3px solid #00ffff;
@@ -218,8 +230,8 @@ body {
 }
 
 .joystick-inner {
-  width: 50px;
-  height: 50px;
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
   background: linear-gradient(135deg, #ff00ff, #00ffff);
   position: absolute;
@@ -238,10 +250,10 @@ body {
 }
 
 .action-button {
-  width: 120px;
-  height: 55px;
+  width: 90px;
+  height: 90px;
   border-radius: 50%;
-  font-size: 1.2em;
+  font-size: 1.1em;
   font-weight: bold;
   color: #fff;
   border: 3px solid #fff;
@@ -251,6 +263,9 @@ body {
     0 0 30px #ff0000,
     inset 0 0 20px rgba(255, 255, 255, 0.2);
   transition: all 0.1s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .action-button:active {
@@ -275,6 +290,25 @@ body {
   box-shadow:
     0 0 50px #ffffff,
     inset 0 0 30px rgba(255, 255, 255, 0.5);
+}
+
+.fab {
+  position: absolute;
+  right: 16px;
+  bottom: 170px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: linear-gradient(135deg, #ff00ff, #00ffff);
+  color: #fff;
+  font-size: 1.4em;
+  box-shadow: 0 0 20px #00ffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
 }
 
 /* Modal */
@@ -351,24 +385,14 @@ body {
   }
 
   .controls {
-    flex-direction: column;
-    height: auto;
-    padding: 10px 20px 20px;
+    flex-direction: row;
+    height: 180px;
+    padding: 10px 20px 24px;
+    gap: 26px;
   }
 
   .action-buttons {
-    width: 100%;
-    flex-direction: row;
-    justify-content: center;
-  }
-
-  .action-button {
-    flex: 1;
-    max-width: 200px;
-  }
-
-  .joystick-container {
-    order: 2;
+    flex-direction: column;
   }
 }
 
@@ -404,7 +428,8 @@ body {
   }
 
   .action-button {
-    height: 50px;
-    font-size: 1em;
+    width: 72px;
+    height: 72px;
+    font-size: 0.95em;
   }
 }
