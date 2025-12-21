@@ -14,6 +14,7 @@ const gameScreen = document.getElementById('game');
 const roundEndScreen = document.getElementById('roundEnd');
 const playBtn = document.getElementById('playBtn');
 const attackBtn = document.getElementById('attackBtn');
+const shieldBtn = document.getElementById('shieldBtn');
 const statusDiv = document.getElementById('status');
 const continueBtn = document.getElementById('continueBtn');
 
@@ -31,6 +32,21 @@ window.addEventListener('load', () => {
     attack();
   });
   attackBtn.addEventListener('click', attack);
+
+  const raiseShieldHandler = (e) => {
+    e.preventDefault();
+    raiseShield();
+  };
+  const lowerShieldHandler = (e) => {
+    e.preventDefault();
+    lowerShield();
+  };
+  shieldBtn.addEventListener('touchstart', raiseShieldHandler);
+  shieldBtn.addEventListener('touchend', lowerShieldHandler);
+  shieldBtn.addEventListener('touchcancel', lowerShieldHandler);
+  shieldBtn.addEventListener('mousedown', raiseShieldHandler);
+  shieldBtn.addEventListener('mouseup', lowerShieldHandler);
+  shieldBtn.addEventListener('mouseleave', lowerShieldHandler);
   
   continueBtn.addEventListener('click', () => {
     roundEndScreen.classList.add('hidden');
@@ -219,18 +235,72 @@ function attack() {
   }
 }
 
+function raiseShield() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'shield', up: true }));
+    shieldBtn.classList.add('active');
+  }
+}
+
+function lowerShield() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'shield', up: false }));
+    shieldBtn.classList.remove('active');
+  }
+}
+
 function updateHUD() {
   if (!gameState) return;
   
   const health1 = document.getElementById('health1');
   const health2 = document.getElementById('health2');
+  const shield1 = document.getElementById('shield1');
+  const shield2 = document.getElementById('shield2');
   const score1 = document.getElementById('score1');
   const score2 = document.getElementById('score2');
-  
+
   health1.style.width = `${gameState.player1.health}%`;
   health2.style.width = `${gameState.player2.health}%`;
+  if (gameState.player1.shield) {
+    const p1Shield = gameState.player1.shield;
+    shield1.style.width = `${(p1Shield.strength / p1Shield.max) * 100}%`;
+    shield1.classList.toggle('active', p1Shield.up);
+  }
+
+  if (gameState.player2.shield) {
+    const p2Shield = gameState.player2.shield;
+    shield2.style.width = `${(p2Shield.strength / p2Shield.max) * 100}%`;
+    shield2.classList.toggle('active', p2Shield.up);
+  }
+
+  renderShieldButton();
   score1.textContent = gameState.player1.score;
   score2.textContent = gameState.player2.score;
+}
+
+function getPlayerShield() {
+  if (!gameState || playerIndex < 0) return null;
+  const playerKey = `player${playerIndex + 1}`;
+  return gameState[playerKey]?.shield || null;
+}
+
+function renderShieldButton() {
+  const shieldState = getPlayerShield();
+  if (!shieldState) return;
+
+  const now = Date.now();
+  const lockouts = [shieldState.cooldownUntil, shieldState.disabledUntil];
+  const cooldownMs = Math.max(...lockouts) - now;
+  const cooldownSeconds = Math.max(0, Math.ceil(cooldownMs / 1000));
+
+  shieldBtn.disabled = cooldownSeconds > 0;
+  shieldBtn.classList.toggle('active', shieldState.up);
+
+  if (cooldownSeconds > 0) {
+    shieldBtn.textContent = `SHIELD (${cooldownSeconds}s)`;
+  } else {
+    shieldBtn.textContent = `SHIELD ${shieldState.strength}/${shieldState.max}`;
+  }
 }
 
 function gameLoop(timestamp) {
@@ -316,6 +386,17 @@ function drawPlayer(player, isYou, color) {
     ctx.shadowColor = '#ff6600';
     ctx.beginPath();
     ctx.arc(player.x, player.y, 45, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  if (player.shield?.up) {
+    ctx.strokeStyle = '#00ffff';
+    ctx.lineWidth = 4;
+    ctx.shadowBlur = 25;
+    ctx.shadowColor = '#00ffff';
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 55, 0, Math.PI * 2);
     ctx.stroke();
     ctx.shadowBlur = 0;
   }

@@ -152,6 +152,31 @@ body {
   text-shadow: 0 0 5px #00ffff;
 }
 
+.shield-bar {
+  width: 100%;
+  height: 14px;
+  background: rgba(0, 255, 255, 0.2);
+  border: 2px solid #00ffff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 0 8px rgba(0, 255, 255, 0.4);
+  margin-top: 6px;
+}
+
+.shield-fill {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, #00ffff, #5ce1e6);
+  transition: width 0.2s ease;
+  box-shadow: 0 0 8px #00ffff;
+}
+
+.shield-fill.active {
+  box-shadow:
+    0 0 12px #ffffff,
+    inset 0 0 8px rgba(255, 255, 255, 0.6);
+}
+
 .timer {
   font-size: 2em;
   font-weight: bold;
@@ -171,6 +196,7 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 0 30px;
+  gap: 20px;
 }
 
 .joystick-container {
@@ -204,28 +230,51 @@ body {
   transition: all 0.1s ease;
 }
 
-.attack-button {
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.action-button {
   width: 120px;
-  height: 120px;
+  height: 55px;
   border-radius: 50%;
   font-size: 1.2em;
   font-weight: bold;
   color: #fff;
-  background: linear-gradient(135deg, #ff0000, #ff6600);
   border: 3px solid #fff;
   cursor: pointer;
   text-shadow: 0 0 10px #fff;
-  box-shadow: 
+  box-shadow:
     0 0 30px #ff0000,
     inset 0 0 20px rgba(255, 255, 255, 0.2);
   transition: all 0.1s ease;
 }
 
-.attack-button:active {
+.action-button:active {
   transform: scale(0.9);
-  box-shadow: 
+  box-shadow:
     0 0 50px #ff0000,
     inset 0 0 30px rgba(255, 255, 255, 0.4);
+}
+
+.attack-button {
+  background: linear-gradient(135deg, #ff0000, #ff6600);
+}
+
+.shield-button {
+  background: linear-gradient(135deg, #00b4d8, #5ce1e6);
+  box-shadow:
+    0 0 30px #00ffff,
+    inset 0 0 20px rgba(255, 255, 255, 0.2);
+}
+
+.action-button.active {
+  box-shadow:
+    0 0 50px #ffffff,
+    inset 0 0 30px rgba(255, 255, 255, 0.5);
 }
 
 /* Modal */
@@ -300,6 +349,27 @@ body {
     padding: 15px 40px;
     font-size: 1.2em;
   }
+
+  .controls {
+    flex-direction: column;
+    height: auto;
+    padding: 10px 20px 20px;
+  }
+
+  .action-buttons {
+    width: 100%;
+    flex-direction: row;
+    justify-content: center;
+  }
+
+  .action-button {
+    flex: 1;
+    max-width: 200px;
+  }
+
+  .joystick-container {
+    order: 2;
+  }
 }
 
 @media (max-width: 768px) {
@@ -332,10 +402,9 @@ body {
     width: 100px;
     height: 100px;
   }
-  
-  .attack-button {
-    width: 100px;
-    height: 100px;
+
+  .action-button {
+    height: 50px;
     font-size: 1em;
   }
 }

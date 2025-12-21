@@ -26,6 +26,9 @@
         <div class="health-bar">
           <div id="health1" class="health-fill"></div>
         </div>
+        <div class="shield-bar">
+          <div id="shield1" class="shield-fill"></div>
+        </div>
         <div class="score">Score: <span id="score1">0</span></div>
       </div>
       
@@ -35,6 +38,9 @@
         <div class="player-name">OPPONENT</div>
         <div class="health-bar">
           <div id="health2" class="health-fill"></div>
+        </div>
+        <div class="shield-bar">
+          <div id="shield2" class="shield-fill"></div>
         </div>
         <div class="score">Score: <span id="score2">0</span></div>
       </div>
@@ -48,7 +54,10 @@
           <div class="joystick-inner"></div>
         </div>
       </div>
-      <button id="attackBtn" class="attack-button">ATTACK</button>
+      <div class="action-buttons">
+        <button id="attackBtn" class="action-button attack-button">ATTACK</button>
+        <button id="shieldBtn" class="action-button shield-button">SHIELD</button>
+      </div>
     </div>
   </div>
 
