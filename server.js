@@ -11,7 +11,7 @@ const wss = new WebSocket.Server({ server });
 const PORT = 3000;
 
 // Serve static files
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
