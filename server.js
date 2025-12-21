@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
@@ -22,7 +23,7 @@ const waitingPlayers = [];
 
 class Game {
   constructor(player1, player2) {
-    this.id = Math.random().toString(36).substr(2, 9);
+    this.id = crypto.randomUUID();
     this.players = [player1, player2];
     this.state = {
       player1: { x: 100, y: 250, health: 100, score: 0, attacking: false },
@@ -115,7 +116,7 @@ class Game {
 wss.on('connection', (ws) => {
   console.log('New client connected');
   
-  const player = { ws, id: Math.random().toString(36).substr(2, 9) };
+  const player = { ws, id: crypto.randomUUID() };
   
   ws.on('message', (message) => {
     try {

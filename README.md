@@ -34,6 +34,15 @@ This will:
 
 #### Linux/Mac
 
+Simply run the startup script:
+
+```bash
+chmod +x start-server.sh
+./start-server.sh
+```
+
+Or manually:
+
 ```bash
 # Install dependencies
 npm install

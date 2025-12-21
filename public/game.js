@@ -337,7 +337,9 @@ function updateParticles() {
       continue;
     }
     
-    ctx.fillStyle = p.color + Math.floor(p.life * 255).toString(16).padStart(2, '0');
+    // Clamp alpha value to valid range
+    const alpha = Math.min(255, Math.max(0, Math.floor(p.life * 255)));
+    ctx.fillStyle = p.color + alpha.toString(16).padStart(2, '0');
     ctx.shadowBlur = 10;
     ctx.shadowColor = p.color;
     ctx.beginPath();
