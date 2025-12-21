@@ -1,0 +1,17 @@
+{
+  "name": "1v1-pvp-game",
+  "version": "1.0.0",
+  "description": "Fast-paced 1v1 PVP mobile game with cool effects",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["pvp", "game", "multiplayer", "mobile"],
+  "author": "JustSadSock",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.14.2"
+  }
+}
