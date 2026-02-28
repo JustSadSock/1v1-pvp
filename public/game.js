@@ -37,7 +37,8 @@ const fullscreenBtn = document.getElementById('fullscreenBtn');
 window.addEventListener('load', () => {
   canvas = document.getElementById('gameCanvas');
   ctx = canvas.getContext('2d');
-  
+
+  updateUiScale();
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
 
@@ -77,10 +78,34 @@ window.addEventListener('load', () => {
 });
 
 function resizeCanvas() {
+  updateUiScale();
   const hudHeight = document.querySelector('.hud')?.offsetHeight || 0;
   const controlsHeight = document.querySelector('.controls')?.offsetHeight || 0;
   canvas.width = window.innerWidth;
   canvas.height = Math.max(200, window.innerHeight - hudHeight - controlsHeight - 10);
+}
+
+function updateUiScale() {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const baseWidth = 1200;
+  const baseHeight = 720;
+  const rawScale = Math.min(vw / baseWidth, vh / baseHeight);
+  const scale = Math.max(0.55, Math.min(1.25, rawScale));
+
+  const rootStyle = document.documentElement.style;
+  const px = (value) => `${Math.round(value * scale)}px`;
+
+  rootStyle.setProperty('--ui-scale', scale.toFixed(3));
+  rootStyle.setProperty('--font-scale', scale.toFixed(3));
+  rootStyle.setProperty('--controls-height', px(150));
+  rootStyle.setProperty('--control-padding', px(30));
+  rootStyle.setProperty('--control-gap', px(20));
+  rootStyle.setProperty('--joystick-size', px(140));
+  rootStyle.setProperty('--joystick-inner-size', px(60));
+  rootStyle.setProperty('--action-button-size', px(90));
+  rootStyle.setProperty('--fab-size', px(52));
+  rootStyle.setProperty('--hud-padding', px(20));
 }
 
 function connectWebSocket() {
