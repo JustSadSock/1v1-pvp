@@ -5,7 +5,8 @@ A fast-paced, real-time 1v1 PVP game with stunning visual effects, optimized for
 ## 🎮 Features
 
 - **Real-time Multiplayer**: WebSocket-based instant PVP matchmaking
-- **Mobile-Optimized**: Touch controls with virtual joystick and attack button
+- **Mobile-Optimized**: Touch controls with virtual joystick and paired attack/shield buttons
+- **Solo Practice**: Instant bot match for warmups without matchmaking
 - **Cool Visual Effects**: Neon glow effects, particle systems, and smooth animations
 - **Responsive Design**: Works on both portrait and landscape orientations
 - **Cloudflared Tunnel**: Easy public access via cloudflared tunnel
@@ -55,15 +56,17 @@ npm start
 
 - **Locally**: Open http://localhost:3000 in your browser
 - **Publicly** (with cloudflared): Access via https://irgri.uk or https://www.irgri.uk
+- **Static hosting**: The client will connect to the WebSocket server defined in `public/config.js` (defaults to `irgri.uk` when not on localhost). Update `window.SERVER_HOST` there or pass `?server=host:port` in the URL to point the UI at your running server.
 
 ## 🎯 How to Play
 
-1. Click **"FIND MATCH"** to join the matchmaking queue
-2. Wait for an opponent to connect
-3. Use the **joystick** (bottom-left) to move your character
-4. Press the **ATTACK** button (bottom-right) to attack your opponent
-5. Reduce opponent's health to zero to win the round
-6. First to score wins!
+1. Pick **PLAY ONLINE** to queue or **SOLO PRACTICE** for a bot fight
+2. Tap the **fullscreen** orb to hide browser chrome on phones
+3. Use the **joystick** (bottom-left) to move and face your katana
+4. Hit **ATTACK** (bottom-right) to strike in your facing direction
+5. Hold **SHIELD** to block; parry inside 0.4s to stagger foes
+6. Reduce opponent's health to zero to win the round
+7. First to score wins!
 
 ## 🛠️ Configuration
 
@@ -99,7 +102,7 @@ const PORT = 3000; // Change this value
 
 The game is fully optimized for mobile devices:
 
-- **Touch Controls**: Virtual joystick and attack button
+- **Touch Controls**: Virtual joystick plus large attack/shield buttons
 - **Responsive Layout**: Adapts to portrait and landscape modes
 - **Optimized Performance**: Smooth 60 FPS gameplay
 - **No Zoom**: Prevents accidental zooming on touch devices
@@ -118,6 +121,7 @@ The game is fully optimized for mobile devices:
 ├── public/
 │   ├── index.html      # Main game HTML
 │   ├── style.css       # Neon-themed styles
+│   ├── config.js       # Client connection config (SERVER_HOST)
 │   └── game.js         # Game client logic
 ├── server.js           # WebSocket game server
 ├── package.json        # Node.js dependencies
