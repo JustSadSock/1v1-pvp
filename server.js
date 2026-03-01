@@ -26,8 +26,8 @@ class Game {
     this.id = crypto.randomUUID();
     this.players = [player1, player2];
     this.state = {
-      player1: { x: 100, y: 250, health: 100, score: 0, attacking: false },
-      player2: { x: 700, y: 250, health: 100, score: 0, attacking: false }
+      player1: { x: 100, y: 250, health: 100, score: 0, attacking: false, shielding: false },
+      player2: { x: 700, y: 250, health: 100, score: 0, attacking: false, shielding: false }
     };
     this.lastUpdate = Date.now();
     
@@ -84,7 +84,8 @@ class Game {
     );
     
     if (distance < 100) {
-      defender.health = Math.max(0, defender.health - 10);
+      const damage = defender.shielding ? 0 : 10;
+      defender.health = Math.max(0, defender.health - damage);
       
       if (defender.health <= 0) {
         attacker.score++;
@@ -93,6 +94,8 @@ class Game {
         this.state.player2.health = 100;
         this.state.player1.x = 100;
         this.state.player2.x = 700;
+        this.state.player1.shielding = false;
+        this.state.player2.shielding = false;
         
         this.sendToPlayers({
           type: 'roundEnd',
@@ -153,6 +156,17 @@ wss.on('connection', (ws) => {
             const game = games.get(player.gameId);
             if (game) {
               game.handleAttack(player.playerIndex);
+            }
+          }
+          break;
+
+        case 'shield':
+          if (player.gameId) {
+            const game = games.get(player.gameId);
+            if (game) {
+              game.updatePlayer(player.playerIndex, {
+                shielding: Boolean(data.active)
+              });
             }
           }
           break;

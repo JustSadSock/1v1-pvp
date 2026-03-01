@@ -6,6 +6,9 @@ let gameState = null;
 let joystickActive = false;
 let joystickPos = { x: 0, y: 0 };
 let particles = [];
+const desktopMode = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+const pressedKeys = new Set();
+let shieldActive = false;
 
 // UI elements
 const menuScreen = document.getElementById('menu');
@@ -15,6 +18,8 @@ const playBtn = document.getElementById('playBtn');
 const attackBtn = document.getElementById('attackBtn');
 const statusDiv = document.getElementById('status');
 const continueBtn = document.getElementById('continueBtn');
+const controlsDiv = document.querySelector('.controls');
+const desktopHint = document.getElementById('desktopHint');
 
 // Initialize
 window.addEventListener('load', () => {
@@ -36,15 +41,15 @@ window.addEventListener('load', () => {
   });
   
   setupJoystick();
+  setupDesktopControls();
   
   // Start animation loop
   requestAnimationFrame(gameLoop);
 });
 
 function resizeCanvas() {
-  const container = canvas.parentElement;
   canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight - 150 - 60; // HUD + controls
+  canvas.height = desktopMode ? window.innerHeight - 60 : window.innerHeight - 150 - 60; // HUD + controls
 }
 
 function connectWebSocket() {
@@ -120,6 +125,15 @@ function joinGame() {
 }
 
 function setupJoystick() {
+  if (desktopMode) {
+    const joystickContainer = document.querySelector('.joystick-container');
+    joystickContainer.classList.add('hidden');
+    controlsDiv.classList.add('desktop-controls');
+    desktopHint.classList.remove('hidden');
+    attackBtn.classList.add('hidden');
+    return;
+  }
+
   const joystick = document.getElementById('joystick');
   const joystickInner = joystick.querySelector('.joystick-inner');
   const maxDistance = 35;
@@ -184,6 +198,94 @@ function setupJoystick() {
   document.addEventListener('mouseup', handleEnd);
 }
 
+function setupDesktopControls() {
+  if (!desktopMode) return;
+
+  window.addEventListener('keydown', (event) => {
+    const key = event.key.toLowerCase();
+    if (['w', 'a', 's', 'd'].includes(key)) {
+      event.preventDefault();
+      pressedKeys.add(key);
+      sendDesktopMovement();
+    }
+  });
+
+  window.addEventListener('keyup', (event) => {
+    const key = event.key.toLowerCase();
+    if (['w', 'a', 's', 'd'].includes(key)) {
+      pressedKeys.delete(key);
+    }
+  });
+
+  window.addEventListener('blur', () => {
+    pressedKeys.clear();
+    setShield(false);
+  });
+
+  canvas.addEventListener('mousedown', (event) => {
+    if (!gameState || gameScreen.classList.contains('hidden')) return;
+
+    if (event.button === 0) {
+      event.preventDefault();
+      attack();
+    }
+
+    if (event.button === 2) {
+      event.preventDefault();
+      setShield(true);
+    }
+  });
+
+  window.addEventListener('mouseup', (event) => {
+    if (event.button === 2) {
+      setShield(false);
+    }
+  });
+
+  window.addEventListener('contextmenu', (event) => {
+    if (!gameScreen.classList.contains('hidden')) {
+      event.preventDefault();
+    }
+  });
+}
+
+function sendDesktopMovement() {
+  if (!desktopMode || !gameState || !pressedKeys.size) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+  const playerKey = `player${playerIndex + 1}`;
+  const player = gameState[playerKey];
+  if (!player) return;
+
+  let deltaX = 0;
+  let deltaY = 0;
+
+  if (pressedKeys.has('w')) deltaY -= 1;
+  if (pressedKeys.has('s')) deltaY += 1;
+  if (pressedKeys.has('a')) deltaX -= 1;
+  if (pressedKeys.has('d')) deltaX += 1;
+
+  if (deltaX === 0 && deltaY === 0) return;
+
+  const length = Math.hypot(deltaX, deltaY) || 1;
+  const speed = 5;
+
+  ws.send(JSON.stringify({
+    type: 'move',
+    x: Math.max(20, Math.min(canvas.width - 20, player.x + (deltaX / length) * speed)),
+    y: Math.max(20, Math.min(canvas.height - 20, player.y + (deltaY / length) * speed))
+  }));
+}
+
+function setShield(active) {
+  if (!desktopMode || shieldActive === active) return;
+  shieldActive = active;
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'shield', active }));
+  }
+}
+
 function attack() {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'attack' }));
@@ -224,6 +326,10 @@ function gameLoop(timestamp) {
   
   // Draw players
   if (gameState) {
+    if (desktopMode) {
+      sendDesktopMovement();
+    }
+
     drawPlayer(gameState.player1, playerIndex === 0, '#00ffff');
     drawPlayer(gameState.player2, playerIndex === 1, '#ff00ff');
   }
@@ -294,6 +400,17 @@ function drawPlayer(player, isYou, color) {
     ctx.shadowColor = '#ff6600';
     ctx.beginPath();
     ctx.arc(player.x, player.y, 45, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  if (player.shielding) {
+    ctx.strokeStyle = '#4ecbff';
+    ctx.lineWidth = 6;
+    ctx.shadowBlur = 25;
+    ctx.shadowColor = '#4ecbff';
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 36, 0, Math.PI * 2);
     ctx.stroke();
     ctx.shadowBlur = 0;
   }
