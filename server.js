@@ -41,6 +41,10 @@ class Game {
     // Notify players game started
     this.sendToPlayers({ type: 'gameStart', playerIndex: 0 }, 0);
     this.sendToPlayers({ type: 'gameStart', playerIndex: 1 }, 1);
+    this.sendToPlayers({
+      type: 'gameState',
+      state: this.state
+    });
   }
   
   sendToPlayers(message, playerIndex = null) {

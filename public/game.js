@@ -3,6 +3,7 @@ let ws;
 let canvas, ctx;
 let playerIndex = -1;
 let gameState = null;
+let gameMode = null; // 'solo' | 'online'
 let joystickActive = false;
 let joystickPos = { x: 0, y: 0 };
 let particles = [];
@@ -10,11 +11,17 @@ const desktopMode = window.matchMedia('(hover: hover) and (pointer: fine)').matc
 const pressedKeys = new Set();
 let shieldActive = false;
 
+const soloState = {
+  botAttackCooldownUntil: 0,
+  botShieldUntil: 0
+};
+
 // UI elements
 const menuScreen = document.getElementById('menu');
 const gameScreen = document.getElementById('game');
 const roundEndScreen = document.getElementById('roundEnd');
 const playBtn = document.getElementById('playBtn');
+const onlineBtn = document.getElementById('onlineBtn');
 const attackBtn = document.getElementById('attackBtn');
 const shieldBtn = document.getElementById('shieldBtn');
 const statusDiv = document.getElementById('status');
@@ -22,7 +29,6 @@ const continueBtn = document.getElementById('continueBtn');
 const controlsDiv = document.querySelector('.controls');
 const desktopHint = document.getElementById('desktopHint');
 
-// Initialize
 window.addEventListener('load', () => {
   canvas = document.getElementById('gameCanvas');
   ctx = canvas.getContext('2d');
@@ -33,7 +39,9 @@ window.addEventListener('load', () => {
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
 
-  playBtn.addEventListener('click', joinGame);
+  playBtn.addEventListener('click', startSoloGame);
+  onlineBtn.addEventListener('click', joinOnlineGame);
+
   attackBtn.addEventListener('touchstart', (e) => {
     e.preventDefault();
     attack();
@@ -61,7 +69,6 @@ window.addEventListener('load', () => {
     roundEndScreen.classList.add('hidden');
   });
 
-  // Start animation loop
   requestAnimationFrame(gameLoop);
 });
 
@@ -72,12 +79,37 @@ function resizeCanvas() {
   canvas.height = Math.max(200, window.innerHeight - hudHeight - controlsHeight);
 }
 
+function createInitialState() {
+  return {
+    player1: { x: 100, y: 250, health: 100, score: 0, attacking: false, shielding: false },
+    player2: { x: 700, y: 250, health: 100, score: 0, attacking: false, shielding: false }
+  };
+}
+
+function startSoloGame() {
+  gameMode = 'solo';
+  playerIndex = 0;
+  shieldActive = false;
+  gameState = createInitialState();
+  menuScreen.classList.add('hidden');
+  gameScreen.classList.remove('hidden');
+  statusDiv.textContent = '';
+  updateHUD();
+}
+
+function joinOnlineGame() {
+  playBtn.disabled = true;
+  onlineBtn.disabled = true;
+  connectWebSocket();
+}
+
 function connectWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const host = window.location.host;
   ws = new WebSocket(`${protocol}//${host}`);
 
   ws.onopen = () => {
+    gameMode = 'online';
     console.log('Connected to server');
     ws.send(JSON.stringify({ type: 'joinQueue' }));
     statusDiv.textContent = 'Searching for opponent...';
@@ -91,13 +123,17 @@ function connectWebSocket() {
   ws.onerror = (error) => {
     console.error('WebSocket error:', error);
     statusDiv.textContent = 'Connection error. Please refresh.';
+    playBtn.disabled = false;
+    onlineBtn.disabled = false;
   };
 
   ws.onclose = () => {
     console.log('Disconnected from server');
     if (gameScreen.classList.contains('hidden')) {
       statusDiv.textContent = 'Disconnected. Please try again.';
-    } else {
+      playBtn.disabled = false;
+      onlineBtn.disabled = false;
+    } else if (gameMode === 'online') {
       alert('Connection lost!');
       location.reload();
     }
@@ -122,27 +158,21 @@ function handleServerMessage(data) {
       updateHUD();
       break;
 
-    case 'roundEnd':
+    case 'roundEnd': {
       setShield(false);
       const isWinner = data.winner === playerIndex;
       document.getElementById('roundResult').textContent =
         isWinner ? '🏆 YOU WIN! 🏆' : '💀 YOU LOSE 💀';
       roundEndScreen.classList.remove('hidden');
-
-      // Create victory/defeat particles
       createExplosion(canvas.width / 2, canvas.height / 2, isWinner ? '#ffd700' : '#ff0000', 50);
       break;
+    }
 
     case 'opponentDisconnected':
       alert('Opponent disconnected!');
       location.reload();
       break;
   }
-}
-
-function joinGame() {
-  playBtn.disabled = true;
-  connectWebSocket();
 }
 
 function setupJoystick() {
@@ -165,7 +195,7 @@ function setupJoystick() {
   }
 
   function handleMove(e) {
-    if (!joystickActive) return;
+    if (!joystickActive || !gameState) return;
 
     e.preventDefault();
     const touch = e.touches ? e.touches[0] : e;
@@ -189,18 +219,8 @@ function setupJoystick() {
 
     joystickInner.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
 
-    // Send movement to server
-    if (ws && ws.readyState === WebSocket.OPEN && gameState) {
-      const speed = 5;
-      const playerKey = `player${playerIndex + 1}`;
-      const player = gameState[playerKey];
-
-      ws.send(JSON.stringify({
-        type: 'move',
-        x: Math.max(20, Math.min(canvas.width - 20, player.x + joystickPos.x * speed)),
-        y: Math.max(20, Math.min(canvas.height - 20, player.y + joystickPos.y * speed))
-      }));
-    }
+    const speed = 5;
+    movePlayer(joystickPos.x * speed, joystickPos.y * speed);
   }
 
   function handleEnd(e) {
@@ -276,13 +296,29 @@ function setupDesktopControls() {
   });
 }
 
-function sendDesktopMovement() {
-  if (!desktopMode || !gameState || !pressedKeys.size) return;
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+function movePlayer(deltaX, deltaY) {
+  if (!gameState) return;
 
   const playerKey = `player${playerIndex + 1}`;
   const player = gameState[playerKey];
   if (!player) return;
+
+  const newX = Math.max(20, Math.min(canvas.width - 20, player.x + deltaX));
+  const newY = Math.max(20, Math.min(canvas.height - 20, player.y + deltaY));
+
+  if (gameMode === 'online') {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'move', x: newX, y: newY }));
+    }
+  } else {
+    player.x = newX;
+    player.y = newY;
+    updateHUD();
+  }
+}
+
+function sendDesktopMovement() {
+  if (!desktopMode || !gameState || !pressedKeys.size) return;
 
   let deltaX = 0;
   let deltaY = 0;
@@ -296,33 +332,105 @@ function sendDesktopMovement() {
 
   const length = Math.hypot(deltaX, deltaY) || 1;
   const speed = 5;
-
-  ws.send(JSON.stringify({
-    type: 'move',
-    x: Math.max(20, Math.min(canvas.width - 20, player.x + (deltaX / length) * speed)),
-    y: Math.max(20, Math.min(canvas.height - 20, player.y + (deltaY / length) * speed))
-  }));
+  movePlayer((deltaX / length) * speed, (deltaY / length) * speed);
 }
 
 function setShield(active) {
   if (shieldActive === active) return;
   shieldActive = active;
 
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'shield', active }));
+  if (gameMode === 'online') {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'shield', active }));
+    }
+    return;
+  }
+
+  if (gameState) {
+    gameState.player1.shielding = active;
   }
 }
 
-function attack() {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: 'attack' }));
+function resolveAttack(attackerIndex, defenderIndex) {
+  if (!gameState) return;
+  const attacker = gameState[`player${attackerIndex + 1}`];
+  const defender = gameState[`player${defenderIndex + 1}`];
+  if (!attacker || !defender) return;
 
-    // Create attack particles
-    if (gameState) {
-      const playerKey = `player${playerIndex + 1}`;
-      const player = gameState[playerKey];
-      createExplosion(player.x, player.y, '#ff6600', 20);
+  attacker.attacking = true;
+  const distance = Math.hypot(attacker.x - defender.x, attacker.y - defender.y);
+
+  if (distance < 100) {
+    const damage = defender.shielding ? 0 : 10;
+    defender.health = Math.max(0, defender.health - damage);
+
+    if (defender.health <= 0) {
+      attacker.score += 1;
+      gameState.player1.health = 100;
+      gameState.player2.health = 100;
+      gameState.player1.x = 100;
+      gameState.player2.x = 700;
+      gameState.player1.shielding = false;
+      gameState.player2.shielding = false;
+      shieldActive = false;
+
+      const isWinner = attackerIndex === playerIndex;
+      document.getElementById('roundResult').textContent =
+        isWinner ? '🏆 YOU WIN! 🏆' : '💀 YOU LOSE 💀';
+      roundEndScreen.classList.remove('hidden');
+      createExplosion(canvas.width / 2, canvas.height / 2, isWinner ? '#ffd700' : '#ff0000', 50);
     }
+  }
+
+  setTimeout(() => {
+    attacker.attacking = false;
+  }, 300);
+
+  updateHUD();
+}
+
+function attack() {
+  if (!gameState) return;
+
+  const playerKey = `player${playerIndex + 1}`;
+  const player = gameState[playerKey];
+  createExplosion(player.x, player.y, '#ff6600', 20);
+
+  if (gameMode === 'online') {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'attack' }));
+    }
+    return;
+  }
+
+  resolveAttack(0, 1);
+}
+
+function updateSoloBot(timestamp) {
+  if (gameMode !== 'solo' || !gameState) return;
+
+  const bot = gameState.player2;
+  const you = gameState.player1;
+
+  const dx = you.x - bot.x;
+  const dy = you.y - bot.y;
+  const distance = Math.hypot(dx, dy);
+
+  if (distance > 75) {
+    const step = 2.3;
+    bot.x = Math.max(20, Math.min(canvas.width - 20, bot.x + (dx / Math.max(distance, 1)) * step));
+    bot.y = Math.max(20, Math.min(canvas.height - 20, bot.y + (dy / Math.max(distance, 1)) * step));
+  }
+
+  if (you.attacking && distance < 120) {
+    soloState.botShieldUntil = timestamp + 350;
+  }
+
+  bot.shielding = timestamp < soloState.botShieldUntil;
+
+  if (distance < 100 && timestamp >= soloState.botAttackCooldownUntil) {
+    resolveAttack(1, 0);
+    soloState.botAttackCooldownUntil = timestamp + 700;
   }
 }
 
@@ -341,21 +449,18 @@ function updateHUD() {
 }
 
 function gameLoop(timestamp) {
-  // Clear canvas
   ctx.fillStyle = 'rgba(15, 12, 41, 0.3)';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Draw grid effect
   drawGrid();
-
-  // Draw particles
   updateParticles();
 
-  // Draw players
   if (gameState) {
     if (desktopMode) {
       sendDesktopMovement();
     }
+
+    updateSoloBot(timestamp);
 
     drawPlayer(gameState.player1, playerIndex === 0, '#00ffff');
     drawPlayer(gameState.player2, playerIndex === 1, '#ff00ff');
@@ -388,13 +493,11 @@ function drawGrid() {
 function drawPlayer(player, isYou, color) {
   if (!player) return;
 
-  // Shadow
   ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
   ctx.beginPath();
   ctx.ellipse(player.x, player.y + 35, 20, 5, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Glow effect
   const gradient = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, 40);
   gradient.addColorStop(0, color + '80');
   gradient.addColorStop(1, 'transparent');
@@ -403,7 +506,6 @@ function drawPlayer(player, isYou, color) {
   ctx.arc(player.x, player.y, 40, 0, Math.PI * 2);
   ctx.fill();
 
-  // Player body
   ctx.fillStyle = color;
   ctx.shadowBlur = 20;
   ctx.shadowColor = color;
@@ -412,14 +514,12 @@ function drawPlayer(player, isYou, color) {
   ctx.fill();
   ctx.shadowBlur = 0;
 
-  // Player outline
   ctx.strokeStyle = '#fff';
   ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.arc(player.x, player.y, 25, 0, Math.PI * 2);
   ctx.stroke();
 
-  // Attack effect
   if (player.attacking) {
     ctx.strokeStyle = '#ff6600';
     ctx.lineWidth = 5;
@@ -442,7 +542,6 @@ function drawPlayer(player, isYou, color) {
     ctx.shadowBlur = 0;
   }
 
-  // Label
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 14px Arial';
   ctx.textAlign = 'center';
@@ -457,11 +556,11 @@ function createExplosion(x, y, color, count) {
     const angle = (Math.PI * 2 * i) / count;
     const speed = 2 + Math.random() * 3;
     particles.push({
-      x: x,
-      y: y,
+      x,
+      y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      color: color,
+      color,
       life: 1,
       size: 3 + Math.random() * 5
     });
@@ -481,7 +580,6 @@ function updateParticles() {
       continue;
     }
 
-    // Clamp alpha value to valid range
     const alpha = Math.min(255, Math.max(0, Math.floor(p.life * 255)));
     ctx.fillStyle = p.color + alpha.toString(16).padStart(2, '0');
     ctx.shadowBlur = 10;

@@ -85,6 +85,17 @@ body {
     0 0 60px #00ffff;
 }
 
+
+.menu-buttons {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.neon-button.secondary {
+  background: linear-gradient(135deg, #00b3ff, #7e22ce);
+}
 .status {
   margin-top: 30px;
   font-size: 1.2em;
@@ -331,6 +342,12 @@ body {
 
 /* Mobile optimization */
 @media (orientation: portrait) {
+  .menu-buttons {
+    flex-direction: column;
+    width: 100%;
+    align-items: center;
+  }
+
   .neon-title {
     font-size: 2em;
   }
