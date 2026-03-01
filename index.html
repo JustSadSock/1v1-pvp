@@ -6,7 +6,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>1v1 PVP Arena</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="public/style.css">
 </head>
 <body>
   <div id="menu" class="screen">
@@ -14,7 +14,10 @@
       <h1 class="neon-title">⚔️ 1v1 PVP ARENA ⚔️</h1>
       <p class="subtitle">Epic Mobile Combat</p>
     </div>
-    <button id="playBtn" class="neon-button">FIND MATCH</button>
+    <div class="menu-buttons">
+      <button id="playBtn" class="neon-button">SOLO MODE</button>
+      <button id="onlineBtn" class="neon-button secondary">ONLINE 1v1</button>
+    </div>
     <div id="status" class="status"></div>
   </div>
 
@@ -47,7 +50,11 @@
           <div class="joystick-inner"></div>
         </div>
       </div>
-      <button id="attackBtn" class="attack-button">ATTACK</button>
+      <div class="mobile-action-buttons">
+        <button id="shieldBtn" class="shield-button">SHIELD</button>
+        <button id="attackBtn" class="attack-button">ATTACK</button>
+      </div>
+      <div id="desktopHint" class="desktop-hint hidden">WASD — movement | LMB — attack | RMB — shield</div>
     </div>
   </div>
 
@@ -58,6 +65,6 @@
     </div>
   </div>
 
-  <script src="game.js"></script>
+  <script src="public/game.js"></script>
 </body>
 </html>
