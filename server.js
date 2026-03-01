@@ -23,13 +23,22 @@ app.get('/', (req, res) => {
 const games = new Map();
 const waitingPlayers = [];
 
+
+function angleDiff(a, b) {
+  let diff = a - b;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  return Math.abs(diff);
+}
+
+
 class Game {
   constructor(player1, player2) {
     this.id = crypto.randomUUID();
     this.players = [player1, player2];
     this.state = {
-      player1: { x: 100, y: 250, health: 100, score: 0, attacking: false, shielding: false },
-      player2: { x: 700, y: 250, health: 100, score: 0, attacking: false, shielding: false }
+      player1: { x: 100, y: 250, health: 100, score: 0, attacking: false, shielding: false, facing: 0 },
+      player2: { x: 700, y: 250, health: 100, score: 0, attacking: false, shielding: false, facing: Math.PI }
     };
     this.lastUpdate = Date.now();
     
@@ -89,8 +98,23 @@ class Game {
       Math.pow(attacker.y - defender.y, 2)
     );
     
-    if (distance < 100) {
-      const damage = defender.shielding ? 0 : 10;
+    if (distance < 120) {
+      const toDefenderAngle = Math.atan2(defender.y - attacker.y, defender.x - attacker.x);
+      const slashHalfAngle = Math.PI / 3;
+      const attackerFacing = typeof attacker.facing === 'number' ? attacker.facing : 0;
+      const inSlash = angleDiff(attackerFacing, toDefenderAngle) <= slashHalfAngle;
+
+      if (!inSlash) {
+        this.sendToPlayers({ type: 'gameState', state: this.state });
+        return;
+      }
+
+      const toAttackerAngle = Math.atan2(attacker.y - defender.y, attacker.x - defender.x);
+      const shieldHalfAngle = Math.PI / 2;
+      const defenderFacing = typeof defender.facing === 'number' ? defender.facing : Math.PI;
+      const blocksHit = defender.shielding && angleDiff(defenderFacing, toAttackerAngle) <= shieldHalfAngle;
+
+      const damage = blocksHit ? 0 : 10;
       defender.health = Math.max(0, defender.health - damage);
       
       if (defender.health <= 0) {
@@ -102,6 +126,8 @@ class Game {
         this.state.player2.x = 700;
         this.state.player1.shielding = false;
         this.state.player2.shielding = false;
+        this.state.player1.facing = 0;
+        this.state.player2.facing = Math.PI;
         
         this.sendToPlayers({
           type: 'roundEnd',
@@ -149,10 +175,14 @@ wss.on('connection', (ws) => {
           if (player.gameId) {
             const game = games.get(player.gameId);
             if (game) {
-              game.updatePlayer(player.playerIndex, {
+              const update = {
                 x: data.x,
                 y: data.y
-              });
+              };
+              if (typeof data.facing === 'number') {
+                update.facing = data.facing;
+              }
+              game.updatePlayer(player.playerIndex, update);
             }
           }
           break;

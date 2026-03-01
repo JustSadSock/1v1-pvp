@@ -34,7 +34,7 @@ window.addEventListener('load', () => {
   ctx = canvas.getContext('2d');
 
   setupJoystick();
-  setupDesktopControls();
+  setupControls();
 
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
@@ -72,6 +72,13 @@ window.addEventListener('load', () => {
   requestAnimationFrame(gameLoop);
 });
 
+function angleDiff(a, b) {
+  let diff = a - b;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  return Math.abs(diff);
+}
+
 function resizeCanvas() {
   const hudHeight = document.querySelector('.hud')?.offsetHeight || 60;
   const controlsHeight = controlsDiv?.offsetHeight || (desktopMode ? 60 : 150);
@@ -81,8 +88,8 @@ function resizeCanvas() {
 
 function createInitialState() {
   return {
-    player1: { x: 100, y: 250, health: 100, score: 0, attacking: false, shielding: false },
-    player2: { x: 700, y: 250, health: 100, score: 0, attacking: false, shielding: false }
+    player1: { x: 100, y: 250, health: 100, score: 0, attacking: false, shielding: false, facing: 0 },
+    player2: { x: 700, y: 250, health: 100, score: 0, attacking: false, shielding: false, facing: Math.PI }
   };
 }
 
@@ -110,7 +117,6 @@ function connectWebSocket() {
 
   ws.onopen = () => {
     gameMode = 'online';
-    console.log('Connected to server');
     ws.send(JSON.stringify({ type: 'joinQueue' }));
     statusDiv.textContent = 'Searching for opponent...';
   };
@@ -120,15 +126,13 @@ function connectWebSocket() {
     handleServerMessage(data);
   };
 
-  ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
+  ws.onerror = () => {
     statusDiv.textContent = 'Connection error. Please refresh.';
     playBtn.disabled = false;
     onlineBtn.disabled = false;
   };
 
   ws.onclose = () => {
-    console.log('Disconnected from server');
     if (gameScreen.classList.contains('hidden')) {
       statusDiv.textContent = 'Disconnected. Please try again.';
       playBtn.disabled = false;
@@ -145,29 +149,24 @@ function handleServerMessage(data) {
     case 'waiting':
       statusDiv.textContent = 'Searching for opponent...';
       break;
-
     case 'gameStart':
       playerIndex = data.playerIndex;
       menuScreen.classList.add('hidden');
       gameScreen.classList.remove('hidden');
       statusDiv.textContent = '';
       break;
-
     case 'gameState':
       gameState = data.state;
       updateHUD();
       break;
-
     case 'roundEnd': {
       setShield(false);
       const isWinner = data.winner === playerIndex;
-      document.getElementById('roundResult').textContent =
-        isWinner ? '🏆 YOU WIN! 🏆' : '💀 YOU LOSE 💀';
+      document.getElementById('roundResult').textContent = isWinner ? '🏆 YOU WIN! 🏆' : '💀 YOU LOSE 💀';
       roundEndScreen.classList.remove('hidden');
       createExplosion(canvas.width / 2, canvas.height / 2, isWinner ? '#ffd700' : '#ff0000', 50);
       break;
     }
-
     case 'opponentDisconnected':
       alert('Opponent disconnected!');
       location.reload();
@@ -207,7 +206,6 @@ function setupJoystick() {
     let deltaY = touch.clientY - centerY;
 
     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-
     if (distance > maxDistance) {
       const angle = Math.atan2(deltaY, deltaX);
       deltaX = Math.cos(angle) * maxDistance;
@@ -216,7 +214,6 @@ function setupJoystick() {
 
     joystickPos.x = deltaX / maxDistance;
     joystickPos.y = deltaY / maxDistance;
-
     joystickInner.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
 
     const speed = 5;
@@ -238,22 +235,14 @@ function setupJoystick() {
   document.addEventListener('mouseup', handleEnd);
 }
 
-function setupDesktopControls() {
-  if (!desktopMode) {
-    window.addEventListener('mouseup', (event) => {
-      if (event.button === 0 || event.button === 2) {
-        setShield(false);
-      }
-    });
-    return;
-  }
-
+function setupControls() {
+  // keyboard movement on any device with keyboard
   window.addEventListener('keydown', (event) => {
     const key = event.key.toLowerCase();
     if (['w', 'a', 's', 'd'].includes(key)) {
       event.preventDefault();
       pressedKeys.add(key);
-      sendDesktopMovement();
+      sendKeyboardMovement();
     }
   });
 
@@ -269,29 +258,36 @@ function setupDesktopControls() {
     setShield(false);
   });
 
-  canvas.addEventListener('mousedown', (event) => {
-    if (!gameState || gameScreen.classList.contains('hidden')) return;
+  // mouse actions only relevant for desktop
+  if (desktopMode) {
+    canvas.addEventListener('mousedown', (event) => {
+      if (!gameState || gameScreen.classList.contains('hidden')) return;
+      if (event.button === 0) {
+        event.preventDefault();
+        attack();
+      }
+      if (event.button === 2) {
+        event.preventDefault();
+        setShield(true);
+      }
+    });
 
-    if (event.button === 0) {
-      event.preventDefault();
-      attack();
-    }
+    window.addEventListener('mouseup', (event) => {
+      if (event.button === 2) {
+        setShield(false);
+      }
+    });
 
-    if (event.button === 2) {
-      event.preventDefault();
-      setShield(true);
-    }
-  });
+    window.addEventListener('contextmenu', (event) => {
+      if (!gameScreen.classList.contains('hidden')) {
+        event.preventDefault();
+      }
+    });
+  }
 
   window.addEventListener('mouseup', (event) => {
-    if (event.button === 2) {
+    if (event.button === 0 || event.button === 2) {
       setShield(false);
-    }
-  });
-
-  window.addEventListener('contextmenu', (event) => {
-    if (!gameScreen.classList.contains('hidden')) {
-      event.preventDefault();
     }
   });
 }
@@ -305,29 +301,29 @@ function movePlayer(deltaX, deltaY) {
 
   const newX = Math.max(20, Math.min(canvas.width - 20, player.x + deltaX));
   const newY = Math.max(20, Math.min(canvas.height - 20, player.y + deltaY));
+  const facing = (deltaX || deltaY) ? Math.atan2(deltaY, deltaX) : player.facing;
 
   if (gameMode === 'online') {
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'move', x: newX, y: newY }));
+      ws.send(JSON.stringify({ type: 'move', x: newX, y: newY, facing }));
     }
   } else {
     player.x = newX;
     player.y = newY;
+    player.facing = facing;
     updateHUD();
   }
 }
 
-function sendDesktopMovement() {
-  if (!desktopMode || !gameState || !pressedKeys.size) return;
+function sendKeyboardMovement() {
+  if (!gameState || !pressedKeys.size) return;
 
   let deltaX = 0;
   let deltaY = 0;
-
   if (pressedKeys.has('w')) deltaY -= 1;
   if (pressedKeys.has('s')) deltaY += 1;
   if (pressedKeys.has('a')) deltaX -= 1;
   if (pressedKeys.has('d')) deltaX += 1;
-
   if (deltaX === 0 && deltaY === 0) return;
 
   const length = Math.hypot(deltaX, deltaY) || 1;
@@ -360,25 +356,33 @@ function resolveAttack(attackerIndex, defenderIndex) {
   attacker.attacking = true;
   const distance = Math.hypot(attacker.x - defender.x, attacker.y - defender.y);
 
-  if (distance < 100) {
-    const damage = defender.shielding ? 0 : 10;
-    defender.health = Math.max(0, defender.health - damage);
+  if (distance < 120) {
+    const toDefenderAngle = Math.atan2(defender.y - attacker.y, defender.x - attacker.x);
+    const inSlash = angleDiff(attacker.facing ?? 0, toDefenderAngle) <= Math.PI / 3;
 
-    if (defender.health <= 0) {
-      attacker.score += 1;
-      gameState.player1.health = 100;
-      gameState.player2.health = 100;
-      gameState.player1.x = 100;
-      gameState.player2.x = 700;
-      gameState.player1.shielding = false;
-      gameState.player2.shielding = false;
-      shieldActive = false;
+    if (inSlash) {
+      const toAttackerAngle = Math.atan2(attacker.y - defender.y, attacker.x - defender.x);
+      const blocksHit = defender.shielding && angleDiff(defender.facing ?? Math.PI, toAttackerAngle) <= Math.PI / 2;
+      const damage = blocksHit ? 0 : 10;
+      defender.health = Math.max(0, defender.health - damage);
 
-      const isWinner = attackerIndex === playerIndex;
-      document.getElementById('roundResult').textContent =
-        isWinner ? '🏆 YOU WIN! 🏆' : '💀 YOU LOSE 💀';
-      roundEndScreen.classList.remove('hidden');
-      createExplosion(canvas.width / 2, canvas.height / 2, isWinner ? '#ffd700' : '#ff0000', 50);
+      if (defender.health <= 0) {
+        attacker.score += 1;
+        gameState.player1.health = 100;
+        gameState.player2.health = 100;
+        gameState.player1.x = 100;
+        gameState.player2.x = 700;
+        gameState.player1.shielding = false;
+        gameState.player2.shielding = false;
+        gameState.player1.facing = 0;
+        gameState.player2.facing = Math.PI;
+        shieldActive = false;
+
+        const isWinner = attackerIndex === playerIndex;
+        document.getElementById('roundResult').textContent = isWinner ? '🏆 YOU WIN! 🏆' : '💀 YOU LOSE 💀';
+        roundEndScreen.classList.remove('hidden');
+        createExplosion(canvas.width / 2, canvas.height / 2, isWinner ? '#ffd700' : '#ff0000', 50);
+      }
     }
   }
 
@@ -418,8 +422,11 @@ function updateSoloBot(timestamp) {
 
   if (distance > 75) {
     const step = 2.3;
-    bot.x = Math.max(20, Math.min(canvas.width - 20, bot.x + (dx / Math.max(distance, 1)) * step));
-    bot.y = Math.max(20, Math.min(canvas.height - 20, bot.y + (dy / Math.max(distance, 1)) * step));
+    const stepX = (dx / Math.max(distance, 1)) * step;
+    const stepY = (dy / Math.max(distance, 1)) * step;
+    bot.x = Math.max(20, Math.min(canvas.width - 20, bot.x + stepX));
+    bot.y = Math.max(20, Math.min(canvas.height - 20, bot.y + stepY));
+    bot.facing = Math.atan2(stepY, stepX);
   }
 
   if (you.attacking && distance < 120) {
@@ -456,10 +463,7 @@ function gameLoop(timestamp) {
   updateParticles();
 
   if (gameState) {
-    if (desktopMode) {
-      sendDesktopMovement();
-    }
-
+    sendKeyboardMovement();
     updateSoloBot(timestamp);
 
     drawPlayer(gameState.player1, playerIndex === 0, '#00ffff');
@@ -467,6 +471,17 @@ function gameLoop(timestamp) {
   }
 
   requestAnimationFrame(gameLoop);
+}
+
+function drawArcEffect(x, y, radius, facing, halfAngle, color, width, blur) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.shadowBlur = blur;
+  ctx.shadowColor = color;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, facing - halfAngle, facing + halfAngle);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
 }
 
 function drawGrid() {
@@ -492,6 +507,7 @@ function drawGrid() {
 
 function drawPlayer(player, isYou, color) {
   if (!player) return;
+  const facing = typeof player.facing === 'number' ? player.facing : 0;
 
   ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
   ctx.beginPath();
@@ -521,25 +537,11 @@ function drawPlayer(player, isYou, color) {
   ctx.stroke();
 
   if (player.attacking) {
-    ctx.strokeStyle = '#ff6600';
-    ctx.lineWidth = 5;
-    ctx.shadowBlur = 30;
-    ctx.shadowColor = '#ff6600';
-    ctx.beginPath();
-    ctx.arc(player.x, player.y, 45, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
+    drawArcEffect(player.x, player.y, 45, facing, Math.PI / 3, '#ff6600', 5, 30);
   }
 
   if (player.shielding) {
-    ctx.strokeStyle = '#4ecbff';
-    ctx.lineWidth = 6;
-    ctx.shadowBlur = 25;
-    ctx.shadowColor = '#4ecbff';
-    ctx.beginPath();
-    ctx.arc(player.x, player.y, 36, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.shadowBlur = 0;
+    drawArcEffect(player.x, player.y, 36, facing, Math.PI / 2, '#4ecbff', 6, 25);
   }
 
   ctx.fillStyle = '#fff';
